@@ -1,85 +1,105 @@
 """
-We calculate the halo concentration for various cosmological simulations using our universal concentration 
-model, given by c_vir = A * (D_zf * D_z * sigma_M)**alpha + B. We first present the relations for D_zf derived 
-from the simulations. Subsequently, we derive the concentration of a halo of mass Mat redshift z. In cases where 
-D_zf is not directly required, the halo formation epoch can be obtained from a semi-analytical model or another 
-fitting formula for the halo mass accretion history (MAH).
+Calculate halo concentrations using universal model: c_vir = 6.42 * (D_zf * D_z * sigma_M)**1.18 + 2.60
 """
 import numpy as np
 import sys
 import os
-# Define parameters for z_f calculation models
-D_zf_MODELS = {
-    "LCDM": {'alpha': -1.59,  'beta': 0.10, 'gamma': 2.29},
-    "SCDM": {'alpha': -1.62,  'beta': 0.13, 'gamma': 2.33},
-    "OCDM": {'alpha': -1.60,  'beta': 0.12, 'gamma': 2.34},
-    "SF_n2": {'alpha': -1.60,  'beta': 0.14, 'gamma': 2.36},
-    "LWDM": {'alpha': -1.60,  'beta': 0.13, 'gamma': 2.34},
-    "wCDM": {'alpha': -1.60,  'beta': 0.13, 'gamma': 2.34},
-}
 
-def universal_model(D_z, D_zf, sigma_M, A=6.42, alpha=1.18, B=2.60):
-    """Calculate c_vir"""
-    return A * (D_zf * D_z * sigma_M)**alpha + B
+def universal_concentration(D_z, D_zf, sigma_M, a=6.42, b=1.18, c=2.60):
+    """Calculate halo concentration c_vir"""
+    return a * (D_zf * D_z * sigma_M)**b + c
 
-def calculate_D_zf(D_z, sigma_M, D_zf_model='LCDM'):
-    """Calculate formation redshift z_f"""
-    params = D_zf_MODELS[D_zf_model]
-    return D_z*(params['alpha'] * (sigma_M*D_z)**params['beta'] + params['gamma'])
+def universal_D_zf(D_z, sigma_M, sigma_M_f, alpha=2.80, beta=2.22, gamma=0.11):
+    """Calculate formation growth factor D_zf"""
+    Delta_S = np.sqrt(sigma_M_f**2 - sigma_M**2)
+    return D_z * (alpha - beta * (D_z * Delta_S)**gamma)
 
-def process_halo_data(input_file, cosmology_name, z=0.0, D_zf_model='LCDM'):
-    """Process halo data and return results"""
+def D_zf_eps_func(D_z, sigma_M, sigma_M_f, omega_f=0.74, delta_c=1.686):
+    """Calculate D_zf using epsilon method"""
+    Delta_S = np.sqrt(sigma_M_f**2 - sigma_M**2)
+    return D_z / (1 + (omega_f / delta_c) * D_z * Delta_S)
+
+def process_halo_data(input_file, z=0.0):
+    """Process halo data and compute concentrations"""
+    try:
+        data = np.loadtxt(input_file, skiprows=1)
+    except Exception as e:
+        print(f"Error loading {input_file}: {e}")
+        return None, None, None
     
-    # Read data
-    data = np.genfromtxt(input_file, skip_header=1)
-    Mvir = data[:, 0]    # First column is Mvir
-    D_z = data[:, 1]
-    sigma_M = data[:, 2]  # Third column is sigma_M*D(z)
+    if len(data) == 0:
+        print(f"Warning: No data in {input_file}")
+        return None, None, None
     
-    # Initialize results array
-    results = np.zeros((len(Mvir), 5))
+    # Extract columns
+    Mvir = data[:, 0]
+    z_data = data[:, 1]
+    D_z = data[:, 2]
+    sigma_M = data[:, 3]
+    sigma_M_f = data[:, 4]
+    sigma_M_f2 = data[:, 5]
     
-    # Calculate for each halo
-    for i in range(len(Mvir)):
-        D_zf = calculate_D_zf(D_z[i], sigma_M[i], D_zf_model=D_zf_model)
-        c_vir = universal_model(D_z[i], D_zf, sigma_M[i])
-        results[i] = [Mvir[i], sigma_M[i], D_z[i], D_zf, c_vir]
+    # Override redshift if provided
+    if z is not None:
+        z_data = np.full_like(z_data, z)
     
+    n_halos = len(Mvir)
+    results = np.zeros((n_halos, 9))
+    
+    for i in range(n_halos):
+        D_zf_sim = universal_D_zf(D_z[i], sigma_M[i], sigma_M_f[i])
+        D_zf_eps = D_zf_eps_func(D_z[i], sigma_M[i], sigma_M_f[i])
+        D_zf_eps2 = D_zf_eps_func(D_z[i], sigma_M[i], sigma_M_f2[i])
+        
+        c_vir_sim = universal_concentration(D_z[i], D_zf_sim, sigma_M[i])
+        c_vir_eps = universal_concentration(D_z[i], D_zf_eps, sigma_M[i])
+        c_vir_eps2 = universal_concentration(D_z[i], D_zf_eps2, sigma_M[i])
+        
+        results[i] = [
+            Mvir[i], sigma_M[i], sigma_M_f[i], z_data[i], D_z[i],
+            D_zf_sim, c_vir_sim, c_vir_eps, c_vir_eps2
+        ]
     return Mvir, D_z, results
 
 def main():
-    # Parse command line arguments
+    if len(sys.argv) < 4:
+        print("Usage: python concentration.py <input_file> <cosmology> <redshift>")
+        sys.exit(1)
+    
     input_file = sys.argv[1]
     cosmology = sys.argv[2]
     redshift = float(sys.argv[3])
-    D_zf_model = sys.argv[4]
     
-    # Set output filename
-    output_file = f"halo_properties2_{redshift}_{cosmology}.dat"
+    if not os.path.exists(input_file):
+        print(f"Error: File '{input_file}' not found")
+        sys.exit(1)
     
-    # Process data
-    Mvir, D_z, results = process_halo_data(input_file, cosmology, redshift, D_zf_model)
+    output_file = f"halo_properties_z{redshift}_{cosmology}.dat"
     
-    # Print results in specified order
-    print("=" * 60)
-    print(f"Input file: {os.path.basename(input_file)}")
-    print(f"Total halos processed: {len(Mvir)}")
-    print(f"Mvir range: {Mvir.min():.2e} - {Mvir.max():.2e} M_sun/h")
-    print(f"Cosmology: {cosmology}")
-    print(f"Redshift: z = {redshift}")
-    print(f"Linear growth factor D(z): {D_z[0]:.5f}")
-    print(f"D(z_f,peak) model: {D_zf_model}")
-    print(f"D(z_f,peak) range: {results[:,3].min():.3f} - {results[:,3].max():.3f}")
-    print(f"c_vir range: {results[:,4].min():.2f} - {results[:,4].max():.2f}")
-    print(f"Output file: {output_file}")
-    print("=" * 60)
+    Mvir, D_z, results = process_halo_data(input_file, redshift)
+    
+    if results is None:
+        print("Error: Failed to process data")
+        sys.exit(1)
+    
+    # Print summary
+    print("\n" + "="*50)
+    print(f"Input:    {os.path.basename(input_file)}")
+    print(f"Halos:    {len(Mvir)}")
+    print(f"Mvir:     {Mvir.min():.2e} - {Mvir.max():.2e} M_sun/h")
+    print(f"Cosmo:    {cosmology}")
+    print(f"z:        {redshift}")
+    print(f"Output:   {output_file}")
+    print("="*50)
     
     # Save results
-    np.savetxt(
-        output_file, results,
-        fmt='%.6e %.6f %.6f %.6f %.6f',
-        header='Mvir[M_sun/h] sigma(M,0) D(z) D(z_f,peak) c_vir',
-        comments='')
+    header = (
+        "# Mvir[M_sun/h] sigma(M,0) sigma(0.5M,0) z D(z) "
+        "D(z_f,peak) c_vir_sim c_vir_eps c_vir_eps2"
+    )
+    np.savetxt(output_file, results, fmt='%.6e %.6f %.6f %.4f %.6f %.6f %.6f %.6f %.6f',
+               header=header, comments='')
+
 
 if __name__ == '__main__':
     main()
