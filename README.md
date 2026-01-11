@@ -22,6 +22,7 @@ This code primarily serves two purposes:
 -  `input_masses.dat` - The required dataset of halo virial mass ($M_{vir}$).
 -  `output_variance.dat` - The dataset of the rms fluctuation of the linear density field of halo.
 -  `halo_properties_z_cosmology.dat` - The halo properties dataset includes: halo mass $M_{\mathrm{vir}}$, linear density fluctuations $\sigma(M)$ and $\sigma(M/2)$, redshift $z$, linear growth factors $D(z)$ and $D(z_{\mathrm{f},\mathrm{peak}})$, and halo concentrations $c_{\mathrm{vir}}$. Export the values ​​for three different concentrations: (1) $c_{\mathrm{vir},\mathrm{sim}}$ calculated using the universal fitting formula for $D(z_{\mathrm{f},\mathrm{peak}})$; (2) $c_{\mathrm{vir},\mathrm{eps}}$ and (3) $c_{\mathrm{vir},\mathrm{eps}2}$ derived from the analytical expression of $D(z_{\mathrm{f},\mathrm{peak}})$ with formation mass fractions f = 0.5 and f = 0.16, respectively.
+-  `Comparison_concentration_for_various_cosmologies.pdf` - A detailed comparison of peak concentrations between various cosmological models and Planck cosmology predictions.
 
 **Note:​**​ Cosmology: LCDM, SCDM, OCDM, EdS, LWDM, wCDM.
   
